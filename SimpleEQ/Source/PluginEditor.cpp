@@ -206,7 +206,7 @@ void ResponseCurveComponent::paint(juce::Graphics& g)
 
     g.drawImage(background, getLocalBounds().toFloat());
 
-    auto responseArea = getAnalysisArea(); //getLocalBounds();
+    auto responseArea = getAnalysisArea(); 
 
     auto width = responseArea.getWidth();
 
@@ -284,9 +284,9 @@ void ResponseCurveComponent::resized() {
     auto width = area.getWidth();
 
     Array<float> freqs{
-        20, /*30, 40,*/ 50, 100,
-        200, /*300, 400,*/ 500, 1000,
-        2000, /*3000, 4000,*/ 5000, 10000,
+        20, 50, 100,
+        200, 500, 1000,
+        2000, 5000, 10000,
         20000
     };
 
@@ -350,6 +350,15 @@ void ResponseCurveComponent::resized() {
 
         g.setColour(gdB == 0.f ? Colours::lawngreen : Colours::lightgrey);
         g.drawFittedText(str, r, Justification::centred, 1);
+
+        str.clear();
+        str << (gdB + 24.f) << "dB";
+        r.setX(1);
+        textWidth = g.getCurrentFont().getStringWidth(str);
+        r.setSize(textWidth, fontHeight);
+        r.setCentre(r.getCentreX(), y);
+        g.setColour(Colours::lightgrey);
+        g.drawFittedText(str, r, Justification::centred, 1);
     }
 }
 
@@ -361,7 +370,6 @@ juce::Rectangle<int> ResponseCurveComponent::getRenderingArea() {
     bounds.removeFromLeft(30);
     bounds.removeFromRight(30);
 
-    //bounds.reduce(10, 8);
     return bounds;
 }
 

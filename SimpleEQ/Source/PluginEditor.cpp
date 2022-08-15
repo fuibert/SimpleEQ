@@ -284,15 +284,15 @@ void ResponseCurveComponent::resized() {
     auto width = area.getWidth();
 
     Array<float> freqs{
-        20, 30, 40, 50, 100,
-        200, 300, 400, 500, 1000,
-        2000, 3000, 4000, 5000, 10000,
+        20, /*30, 40,*/ 50, 100,
+        200, /*300, 400,*/ 500, 1000,
+        2000, /*3000, 4000,*/ 5000, 10000,
         20000
     };
 
-    //Array<float> xs;
-    //for (auto f : freqs)
-    //    xs.add(left + width * mapFromLog10(f, 20.f, 20000.f));
+    Array<float> xs;
+    for (auto f : freqs)
+        xs.add(left + width * mapFromLog10(f, 20.f, 20000.f));
 
     g.setColour(Colours::dimgrey);
     for (auto f : freqs) {
@@ -307,7 +307,37 @@ void ResponseCurveComponent::resized() {
         g.drawHorizontalLine(y, left, left + width);
     }
 
-    g.drawRect(getAnalysisArea());
+    //g.drawRect(getAnalysisArea());
+
+    g.setColour(Colours::lightgrey);
+    const int fontHeight = 10;
+    g.setFont(fontHeight);
+    
+    for (int i = 0; i < freqs.size(); ++i) {
+        auto f = freqs[i];
+        auto x = xs[i];
+
+        bool addK = false;
+        String str;
+        if (f >= 1000.f) {
+            addK = true;
+            f /= 1000.f;
+        }
+
+        str << f;
+        if (addK)
+            str << "k";
+        str << "Hz";
+
+        auto textWidth = g.getCurrentFont().getStringWidth(str);
+
+        Rectangle<int> r;
+        r.setSize(textWidth, fontHeight);
+        r.setCentre(x, 0);
+        r.setY(1);
+
+        g.drawFittedText(str, r, Justification::centred, 1);
+    }
 }
 
 juce::Rectangle<int> ResponseCurveComponent::getRenderingArea() {

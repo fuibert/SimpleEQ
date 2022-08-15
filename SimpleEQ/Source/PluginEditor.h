@@ -165,7 +165,7 @@ private:
     Fifo<PathType> pathFifo;
 };
 
-struct lookAandFeel : juce::LookAndFeel_V4
+struct LookAndFeel : juce::LookAndFeel_V4
 {
     void drawRotarySlider(juce::Graphics&,
         int x, int y, int width, int height,
@@ -173,6 +173,11 @@ struct lookAandFeel : juce::LookAndFeel_V4
         float rotaryStartAngle,
         float rotaryEndAngle,
         juce::Slider&) override;
+
+    void drawToggleButton(juce::Graphics& g,
+        juce::ToggleButton& toggleBtn,
+        bool shouldDrawBtnAsHighlighted,
+        bool shouldDrawBtnAsDown) override;
 };
 
 
@@ -203,7 +208,7 @@ struct RotarySliderWithLabels : juce::Slider
     juce::String getDisplayString() const;
 
 private:
-    lookAandFeel lnf;
+    LookAndFeel lnf;
 
     juce::RangedAudioParameter* param = 0;
     juce::String suffix;
@@ -312,6 +317,8 @@ private:
         analyzerEnableBtnAttachment;
 
     std::vector<juce::Component*> getComps();
+
+    LookAndFeel lnf;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SimpleEQAudioProcessorEditor)
 };

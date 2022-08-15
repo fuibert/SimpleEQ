@@ -9,7 +9,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-void lookAandFeel::drawRotarySlider(juce::Graphics& g,int x, int y, int width, int height,
+void LookAndFeel::drawRotarySlider(juce::Graphics& g,int x, int y, int width, int height,
     float sliderPosProportional, float rotaryStartAngle, float rotaryEndAngle, juce::Slider& slider) {
     using namespace juce;
 
@@ -57,6 +57,36 @@ void lookAandFeel::drawRotarySlider(juce::Graphics& g,int x, int y, int width, i
     }
 }
 
+void LookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& toggleBtn, bool shouldDrawBtnAsHighlighted, bool shouldDrawBtnAsDown) {
+    using namespace juce;
+
+    Path powerBtn;
+
+    auto bounds = toggleBtn.getLocalBounds();
+    auto size = jmin(bounds.getWidth(), bounds.getHeight()) - 6;
+
+    auto r = bounds.withSizeKeepingCentre(size, size).toFloat();
+
+    float angle = 30.f;
+
+    size -= 6;
+
+    powerBtn.addCentredArc(r.getCentreX(), r.getCentreY(),
+        size * 0.5, size * 0.5, 0.f, 
+        degreesToRadians(angle), degreesToRadians(360.f - angle),
+        true);
+
+    powerBtn.startNewSubPath(r.getCentreX(), r.getY());
+    powerBtn.lineTo(r.getCentre());
+
+    PathStrokeType pst(2.f, PathStrokeType::JointStyle::curved);
+    auto color = toggleBtn.getToggleState() ? Colours::dimgrey : Colours::lawngreen;
+    g.setColour(color);
+    g.strokePath(powerBtn, pst);
+
+    g.drawEllipse(r, 2);
+
+}
 //==============================================================================
 void RotarySliderWithLabels::paint(juce::Graphics& g) {
     using namespace juce;
@@ -507,9 +537,12 @@ SimpleEQAudioProcessorEditor::SimpleEQAudioProcessorEditor(SimpleEQAudioProcesso
 
     
 
-    for (auto* comp : getComps()) {
+    for (auto* comp : getComps()) 
         addAndMakeVisible(comp);
-    }
+
+    lowCutBypassBtn.setLookAndFeel(&lnf);
+    peakBypassBtn.setLookAndFeel(&lnf);
+    highCutBypassBtn.setLookAndFeel(&lnf);
 
     setSize (600, 480);
 }
@@ -517,6 +550,9 @@ SimpleEQAudioProcessorEditor::SimpleEQAudioProcessorEditor(SimpleEQAudioProcesso
 //==============================================================================
 SimpleEQAudioProcessorEditor::~SimpleEQAudioProcessorEditor()
 {
+    lowCutBypassBtn.setLookAndFeel(nullptr);
+    peakBypassBtn.setLookAndFeel(nullptr);
+    highCutBypassBtn.setLookAndFeel(nullptr);
 }
 
 //==============================================================================

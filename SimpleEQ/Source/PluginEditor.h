@@ -68,7 +68,7 @@ struct ResponseCurveComponent : juce::Component,
     void timerCallback();
     
     void paint(juce::Graphics& g);
-
+    void resized();
 private:
     SimpleEQAudioProcessor& audioProcessor;
 
@@ -76,6 +76,11 @@ private:
     MonoChain monoChain;
 
     void updateChain();
+
+    juce::Image background;
+
+    juce::Rectangle<int> getRenderingArea();
+    juce::Rectangle<int> getAnalysisArea();
 };
 
 //==============================================================================

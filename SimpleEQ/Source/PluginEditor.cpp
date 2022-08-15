@@ -81,6 +81,31 @@ void RotarySliderWithLabels::paint(juce::Graphics& g) {
             0.0, 1.0),
         startAngle, endAngle, 
         *this);
+
+    auto center = sliderBounds.toFloat().getCentre();
+    auto radius = sliderBounds.getWidth() * 0.5f;
+
+    g.setColour(Colour(0u, 172u, 1u));
+    g.setFont(getTextHeight());
+
+    auto numChoices = labels.size();
+    for (int i = 0; i < numChoices; ++i) {
+        auto pos = labels[i].pos;
+        jassert(0.f <= pos);
+        jassert(pos <= 1.f);
+
+        auto angle = jmap(pos, 0.f, 1.f, startAngle, endAngle);
+
+        auto c = center.getPointOnCircumference(radius + getTextHeight() * 0.5f + 1, angle);
+
+        Rectangle<float> r;
+        auto str = labels[i].label;
+        r.setSize(g.getCurrentFont().getStringWidth(str), getTextHeight());
+        r.setCentre(c);
+        r.setY(r.getY() + getTextHeight());
+
+        g.drawFittedText(str, r.toNearestInt(), juce::Justification::centred, 1);
+    }
 }
 
 juce::Rectangle<int> RotarySliderWithLabels::getSliderBounds() const {
@@ -260,6 +285,29 @@ SimpleEQAudioProcessorEditor::SimpleEQAudioProcessorEditor(SimpleEQAudioProcesso
 {
     // Make sure that before the constructor has finished, you've set the
     // editor's size to whatever you need it to be.
+
+    lowCutFreqSlider.labels.add({ 0.f, "20 Hz" });
+    lowCutFreqSlider.labels.add({ 1.f, "20 kHz" });
+
+    lowCutSlopeSlider.labels.add({ 0.f, "12 dB/oct" });
+    lowCutSlopeSlider.labels.add({ 1.f, "48 dB/oct" });
+
+    peakFreqSlider.labels.add({ 0.f, "20 Hz" });
+    peakFreqSlider.labels.add({ 1.f, "20 kHz" });
+
+    peakGainSlider.labels.add({ 0.f, "-24 dB" });
+    peakGainSlider.labels.add({ 1.f, "24 dB" });
+
+    peakQualitySlider.labels.add({ 0.f, "0.1" });
+    peakQualitySlider.labels.add({ 1.f, "10.0" });
+
+    highCutFreqSlider.labels.add({ 0.f, "20 Hz" });
+    highCutFreqSlider.labels.add({ 1.f, "20 kHz" });
+
+    highCutSlopeSlider.labels.add({ 0.f, "12 dB/oct" });
+    highCutSlopeSlider.labels.add({ 1.f, "48 dB/oct" });
+
+    
 
     for (auto* comp : getComps()) {
         addAndMakeVisible(comp);

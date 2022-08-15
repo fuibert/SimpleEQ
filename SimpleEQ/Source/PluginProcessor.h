@@ -10,8 +10,139 @@
 
 #include <JuceHeader.h>
 
-enum Slope
+#include <array>
+template<typename T>
+struct Fifo
 {
+    void prepare(int numChannels, int numSamples)
+    {
+        static_assert(std::is_same_v<T, juce::AudioBuffer<float>>,
+            "prepare(numChannels, numSamples) should only be used when the Fifo is holding juce::AudioBuffer<float>");
+        for (auto& buffer : buffers)
+        {
+            buffer.setSize(numChannels,
+                numSamples,
+                false,   //clear everything?
+                true,    //including the extra space?
+                true);   //avoid reallocating if you can?
+            buffer.clear();
+        }
+    }
+
+    void prepare(size_t numElements)
+    {
+        static_assert(std::is_same_v<T, std::vector<float>>,
+            "prepare(numElements) should only be used when the Fifo is holding std::vector<float>");
+        for (auto& buffer : buffers)
+        {
+            buffer.clear();
+            buffer.resize(numElements, 0);
+        }
+    }
+
+    bool push(const T& t)
+    {
+        auto write = fifo.write(1);
+        if (write.blockSize1 > 0)
+        {
+            buffers[write.startIndex1] = t;
+            return true;
+        }
+
+        return false;
+    }
+
+    bool pull(T& t)
+    {
+        auto read = fifo.read(1);
+        if (read.blockSize1 > 0)
+        {
+            t = buffers[read.startIndex1];
+            return true;
+        }
+
+        return false;
+    }
+
+    int getNumAvailableForReading() const
+    {
+        return fifo.getNumReady();
+    }
+private:
+    static constexpr int Capacity = 30;
+    std::array<T, Capacity> buffers;
+    juce::AbstractFifo fifo{ Capacity };
+};
+
+enum Channel {
+    left, right
+};
+
+template<typename BlockType>
+struct SingleChannelSampleFifo
+{
+    SingleChannelSampleFifo(Channel ch) : channelToUse(ch)
+    {
+        prepared.set(false);
+    }
+
+    void update(const BlockType& buffer)
+    {
+        jassert(prepared.get());
+        jassert(buffer.getNumChannels() > channelToUse);
+        auto* channelPtr = buffer.getReadPointer(channelToUse);
+
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            pushNextSampleIntoFifo(channelPtr[i]);
+        }
+    }
+
+    void prepare(int bufferSize)
+    {
+        prepared.set(false);
+        size.set(bufferSize);
+
+        bufferToFill.setSize(1,             //channel
+            bufferSize,    //num samples
+            false,         //keepExistingContent
+            true,          //clear extra space
+            true);         //avoid reallocating
+        audioBufferFifo.prepare(1, bufferSize);
+        fifoIndex = 0;
+        prepared.set(true);
+    }
+    //==============================================================================
+    int getNumCompleteBuffersAvailable() const { return audioBufferFifo.getNumAvailableForReading(); }
+    bool isPrepared() const { return prepared.get(); }
+    int getSize() const { return size.get(); }
+    //==============================================================================
+    bool getAudioBuffer(BlockType& buf) { return audioBufferFifo.pull(buf); }
+private:
+    Channel channelToUse;
+    int fifoIndex = 0;
+    Fifo<BlockType> audioBufferFifo;
+    BlockType bufferToFill;
+    juce::Atomic<bool> prepared = false;
+    juce::Atomic<int> size = 0;
+
+    void pushNextSampleIntoFifo(float sample)
+    {
+        if (fifoIndex == bufferToFill.getNumSamples())
+        {
+            auto ok = audioBufferFifo.push(bufferToFill);
+
+            juce::ignoreUnused(ok);
+
+            fifoIndex = 0;
+        }
+
+        bufferToFill.setSample(0, fifoIndex, sample);
+        ++fifoIndex;
+    }
+};
+
+enum Slope{
     slope_12,
     slope_24,
     slope_36,
@@ -22,9 +153,71 @@ struct ChainSettings
     float peakFreq{ 0 }, peakGainInDecibels{ 0 }, peakQuality{ 1.f };
     float lowCutFreq{ 0 }, highCutFreq{ 0 };
     Slope lowCutSlope{ Slope::slope_12 }, highCutSlope{ Slope::slope_12 };
+    bool lowCutBypassed{ false }, peakBypassed{ false }, highCutBypassed{ false };
+    bool analyzerEnabled{ true };
 };
 
 ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts);
+
+using Filter = juce::dsp::IIR::Filter<float>;
+using CutFilter = juce::dsp::ProcessorChain<Filter, Filter, Filter, Filter>;
+using MonoChain = juce::dsp::ProcessorChain<CutFilter, Filter, CutFilter>;
+
+enum ChainPositions
+{
+    LowCut,
+    Peak,
+    HighCut
+};
+
+using Coefficients = Filter::CoefficientsPtr;
+void updateCoefficients(Coefficients& old, const Coefficients& replacements);
+Coefficients makePeakFilter(const ChainSettings& chainSettings, double sampleRate);
+
+template<int Index, typename ChainType, typename CoefficientType>
+void update(ChainType& chain, const CoefficientType& coefficients)
+{
+    updateCoefficients(chain.template get<Index>().coefficients, coefficients[Index]);
+    chain.template setBypassed<Index>(false);
+}
+
+template<typename ChainType, typename CoefficientType>
+void updateCutCoefficients(ChainType& cut, const CoefficientType& cutCoefficients, const Slope& cutSlope)
+{
+
+    cut.template setBypassed<0>(true);
+    cut.template setBypassed<1>(true);
+    cut.template setBypassed<2>(true);
+    cut.template setBypassed<3>(true);
+
+    switch (cutSlope)
+    {
+    case slope_48:
+        update<3>(cut, cutCoefficients);
+        [[fallthrough]];
+    case slope_36:
+        update<2>(cut, cutCoefficients);
+        [[fallthrough]];
+    case slope_24:
+        update<1>(cut, cutCoefficients);
+        [[fallthrough]];
+    case slope_12:
+        update<0>(cut, cutCoefficients);
+        break;
+    default:
+        break;
+    }
+}
+
+inline auto makeLowCutFilter(const ChainSettings& chainSettings, double sampleRate) {
+    return juce::dsp::FilterDesign<float>::designIIRHighpassHighOrderButterworthMethod(
+        chainSettings.lowCutFreq, sampleRate, (chainSettings.lowCutSlope + 1) * 2);
+}
+
+inline auto makeHighCutFilter(const ChainSettings& chainSettings, double sampleRate) {
+    return juce::dsp::FilterDesign<float>::designIIRLowpassHighOrderButterworthMethod(
+        chainSettings.highCutFreq, sampleRate, (chainSettings.highCutSlope + 1) * 2);
+}
 
 //==============================================================================
 /**
@@ -75,60 +268,14 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState apvts{*this, nullptr, "Parameters", createParameterLayout()};
 
+    using BlockType = juce::AudioBuffer<float>;
+    SingleChannelSampleFifo<BlockType> leftChannelFifo{ Channel::left };
+    SingleChannelSampleFifo<BlockType> rightChannelFifo{ Channel::right };
 private:
-    using Filter = juce::dsp::IIR::Filter<float>;
-    using CutFilter = juce::dsp::ProcessorChain<Filter, Filter, Filter, Filter>;
-    using MonoChain = juce::dsp::ProcessorChain<CutFilter, Filter, CutFilter>;
 
     MonoChain leftChain, rightChain;
 
-    enum ChainPositions
-    {
-        LowCut,
-        Peak,
-        HighCut
-    };
-
     void updatePeakFilter(const ChainSettings& chainStteings);
-    using Coefficients = Filter::CoefficientsPtr;
-    static void updateCoefficients(Coefficients& old, const Coefficients& replacements);
-
-    template<int Index, typename ChainType, typename CoefficientType>
-    void update(ChainType& chain, const CoefficientType& coefficients)
-    {
-        updateCoefficients(chain.template get<Index>().coefficients, coefficients[Index]);
-        chain.template setBypassed<Index>(false);
-    }
-
-
-
-    template<typename ChainType, typename CoefficientType>
-    void updateCutCoefficients(ChainType& cut, const CoefficientType& cutCoefficients, const Slope& cutSlope)
-    {
-
-        cut.template setBypassed<0>(true);
-        cut.template setBypassed<1>(true);
-        cut.template setBypassed<2>(true);
-        cut.template setBypassed<3>(true);
-
-        switch (cutSlope)
-        {
-        case slope_48:
-            update<3>(cut, cutCoefficients);
-            [[fallthrough]];
-        case slope_36:
-            update<2>(cut, cutCoefficients);
-            [[fallthrough]];
-        case slope_24:
-            update<1>(cut, cutCoefficients);
-            [[fallthrough]];
-        case slope_12:
-            update<0>(cut, cutCoefficients);
-            break;
-        default:
-            break;
-        }
-    }
 
     void updateLowCutFilters(const ChainSettings& chainSettings);
     void updateHighCutFilters(const ChainSettings& chainSettings);
